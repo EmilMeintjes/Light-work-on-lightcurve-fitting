@@ -6,6 +6,7 @@ The idea is that you, as the user, retain the most control over the fitting proc
 The pipeline is laid out as follows:
 
 lightcurve_fitter/
+
 ├── models.py       — fit functions + prior builder (no dependencies beyond numpy)
 
 ├── persistence.py  — JSON region store + .npy MCMC results
