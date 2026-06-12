@@ -181,9 +181,9 @@ _PRIOR_ABS_FLOOR = 1e-6
 # Fraction above and below the initial guess that the prior should span.
 PRIOR_FRACTION = 0.30
 
+_Y_OFFSET_PRIOR_FRACTION = 0.10  # ±10% around the user's visual estimate — module level
 
 def build_priors(param_names, guesses, prior_fraction=PRIOR_FRACTION):
-
     """
     Construct uniform prior bounds for each parameter given initial guesses.
 
@@ -192,22 +192,8 @@ def build_priors(param_names, guesses, prior_fraction=PRIOR_FRACTION):
         lower_i = g_i - max(prior_fraction * |g_i|, _PRIOR_ABS_FLOOR)
         upper_i = g_i + max(prior_fraction * |g_i|, _PRIOR_ABS_FLOOR)
 
-    Parameters
-    ----------
-    param_names    : list of str   Parameter names (for labelling only).
-    guesses        : list of float Initial guess values, one per parameter.
-    prior_fraction : float         Fractional half-width (default 0.30 → ±30%).
-
-    Returns
-    -------
-    priors : dict
-        Maps each parameter name to {'lower': float, 'upper': float}.
-
-    Example
-    -------
-    >>> priors = build_priors(['amplitude', 'centre', 'sigma', 'y_offset'], [5.0, 100.0, 2.0, 0.1])
-    >>> priors['amplitude']
-    {'lower': 3.5, 'upper': 6.5}
+    y_offset uses _Y_OFFSET_PRIOR_FRACTION (±10%) regardless of prior_fraction,
+    to prevent the amplitude/y_offset degeneracy in Gaussian fits.
     """
 
     if len(param_names) != len(guesses):
@@ -218,7 +204,8 @@ def build_priors(param_names, guesses, prior_fraction=PRIOR_FRACTION):
 
     priors = {}
     for name, g in zip(param_names, guesses):
-        half_width = max(prior_fraction * abs(g), _PRIOR_ABS_FLOOR)
+        frac       = _Y_OFFSET_PRIOR_FRACTION if name == 'y_offset' else prior_fraction
+        half_width = max(frac * abs(g), _PRIOR_ABS_FLOOR)
         priors[name] = {
             'lower': g - half_width,
             'upper': g + half_width,
@@ -226,51 +213,40 @@ def build_priors(param_names, guesses, prior_fraction=PRIOR_FRACTION):
     return priors
 
 
-def build_priors_from_curvefit(param_names, popt, pcov,
-                                n_sigma=2.0):
+def build_priors_from_curvefit(param_names, popt, pcov, n_sigma=2.0):
     """
     Construct uniform prior bounds from a curve_fit result.
 
-    Uses the fitted parameter values and their standard deviations (from the
-    diagonal of the covariance matrix) to set prior bounds as:
+    For y_offset: always uses the flat ±10% rule around the fitted value,
+    ignoring the covariance — the covariance on y_offset is unreliable when
+    amplitude and offset are anti-correlated (Gaussian fits).
 
-        lower_i = popt_i - n_sigma * std_i
-        upper_i = popt_i + n_sigma * std_i
-
-    Falls back to the flat ±30% rule for any parameter whose covariance is
-    non-finite (fit did not converge for that parameter).
-
-    Parameters
-    ----------
-    param_names : list of str
-    popt        : array-like   Best-fit parameters from curve_fit.
-    pcov        : 2-D array    Covariance matrix from curve_fit.
-    n_sigma     : float        Number of sigma to use as prior half-width.
-
-    Returns
-    -------
-    priors : dict
-        Same format as build_priors.
+    For all other parameters: uses n_sigma * std from the covariance, but
+    falls back to flat ±30% if the covariance-derived width exceeds 10x the
+    flat fallback (ill-conditioned fit).
     """
 
-    stds = np.sqrt(np.diag(pcov))
+    stds   = np.sqrt(np.diag(pcov))
     priors = {}
     for name, g, s in zip(param_names, popt, stds):
-        if np.isfinite(s) and s > 0:
-            priors[name] = {
-                'lower': g - n_sigma * s,
-                'upper': g + n_sigma * s,
-            }
+
+        if name == 'y_offset':
+            # Always use tight flat prior for offset — covariance unreliable
+            half_width = max(_Y_OFFSET_PRIOR_FRACTION * abs(g), _PRIOR_ABS_FLOOR)
         else:
-            # Fallback: flat ±30% around the curve_fit central value
-            half_width = max(PRIOR_FRACTION * abs(g), _PRIOR_ABS_FLOOR)
-            priors[name] = {
-                'lower': g - half_width,
-                'upper': g + half_width,
-            }
+            half_width_cf = n_sigma * s
+            half_width_fb = max(PRIOR_FRACTION * abs(g), _PRIOR_ABS_FLOOR)
+            # Use CF width only if it's well-conditioned
+            if np.isfinite(s) and s > 0 and half_width_cf <= 10.0 * half_width_fb:
+                half_width = half_width_cf
+            else:
+                half_width = half_width_fb
+
+        priors[name] = {
+            'lower': g - half_width,
+            'upper': g + half_width,
+        }
     return priors
-
-
 # ---------------------------------------------------------------------------
 # Convenience: evaluate a named model
 # ---------------------------------------------------------------------------
