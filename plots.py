@@ -159,6 +159,7 @@ def plot_overview(t, flux, uncertainty=None,
     fig, ax = plt.subplots(figsize=(16, 5))
 
     # --- Raw data ---
+    # --- Raw data ---
     if uncertainty is not None:
         ax.errorbar(t, flux, yerr=uncertainty,
                     fmt='o', ms=3, alpha=0.5,
@@ -169,43 +170,55 @@ def plot_overview(t, flux, uncertainty=None,
                 label='Data', zorder=2)
 
     # --- Per-region models ---
-    for region in store:
-        sid       = region['segment_id']
+    print(f"[plots] store has {len(store.regions)} region(s): {store.ids()}")
+    for region in store.regions:
+        print(f"[plots] entering loop for seg #{region['segment_id']}")
+        sid = region['segment_id']
         model_key = region['model']
-        colour    = _MODEL_COLOURS.get(model_key, 'grey')
-        label     = f"#{sid} {MODELS[model_key]['label']}"
+        colour = _MODEL_COLOURS.get(model_key, 'grey')
+        label = f"#{sid} {MODELS[model_key]['label']}"
 
-        # Shade the selected region
         ax.axvspan(region['start'], region['end'],
                    alpha=_ALPHA_SHADE, color=colour, zorder=1)
 
+        # t_fine in absolute coords for plotting; shifted for model evaluation
         t_fine = np.linspace(region['start'], region['end'], 500)
+        t_fine_shifted = t_fine - region['start']
 
-        # Try to load MCMC results
         try:
-            res         = load_mcmc_results(results_dir, sid)
-            samples     = res['samples']
+            res = load_mcmc_results(results_dir, sid)
+            samples = res['samples']
             param_names = res['param_names']
-            median, lo, hi = _posterior_band(model_key, t_fine,
+            print(f"[plots] seg #{sid}: {len(samples)} samples, "
+                  f"params={param_names}, "
+                  f"t_fine_shifted range [{t_fine_shifted.min():.4g}, "
+                  f"{t_fine_shifted.max():.4g}]")
+            median, lo, hi = _posterior_band(model_key, t_fine_shifted,
                                              samples, param_names)
+            print(f"[plots] seg #{sid}: median range "
+                  f"[{np.nanmin(median):.4g}, {np.nanmax(median):.4g}]")
             ax.plot(t_fine, median, color=colour, lw=_LW_MEDIAN,
                     label=label, zorder=4)
             ax.fill_between(t_fine, lo, hi,
                             color=colour, alpha=_ALPHA_BAND, zorder=3)
 
         except FileNotFoundError:
-            # No MCMC yet — fall back to initial guess curve if available
             guesses = region.get('initial_guesses', {})
             if guesses:
                 param_names = MODELS[model_key]['params']
-                params      = [guesses.get(p, 0.0) for p in param_names]
+                params = {p: guesses.get(p, 0.0) for p in param_names}
                 try:
-                    y_guess = evaluate(model_key, t_fine, params)
+                    y_guess = evaluate(model_key, t_fine_shifted, params)
                     ax.plot(t_fine, y_guess, color=colour, lw=1.2,
                             ls='--', alpha=0.7,
                             label=f"{label} (guess)", zorder=3)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"[plots] seg #{sid} guess plot failed: {exc}")
+
+        except Exception as exc:
+            print(f"[plots] seg #{sid} MCMC plot failed: {exc}")
+            import traceback;
+            traceback.print_exc()
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -254,6 +267,7 @@ def plot_region_fit(t, flux, uncertainty=None,
 
     store = RegionStore(regions_file)
     store.load()
+    print(f"[plots] store has {len(store.regions)} region(s): {store.ids()}")
     region = store.get(segment_id)
     xscale = store.xscale
     yscale = store.yscale
