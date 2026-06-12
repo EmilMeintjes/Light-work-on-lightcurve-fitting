@@ -39,7 +39,7 @@ from persistence import RegionStore
 
 
 # ---------------------------------------------------------------------------
-# Layout constants  (all in figure-fraction units unless noted)
+# Layout constants (all in figure-fraction units unless noted)
 # ---------------------------------------------------------------------------
 
 _FIG_W        = 14.0

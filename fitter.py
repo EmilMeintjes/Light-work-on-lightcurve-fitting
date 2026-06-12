@@ -28,6 +28,8 @@ Typical usage
 # System imports
 import os
 import shutil
+
+# External imports
 import numpy as np
 
 # Check PyAutoFit is installed; will flag later
