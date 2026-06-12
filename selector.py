@@ -1,7 +1,7 @@
 """
 selector.py
 -----------
-Stage 1: Interactive region selector for nova-like lightcurve fitting.
+Stage 1: Interactive region selector for lightcurve fitting.
 
 Controls
 --------
@@ -151,7 +151,7 @@ def run_selector(t, flux, uncertainty=None,
         ax.set_ylabel(ylabel)
         ax.set_title(
             title or (
-                'Nova-like lightcurve  |  '
+                'Radio lightcurve  |  '
                 'Click: START->END  |  Enter: confirm  |  '
                 'u: undo  |  d: delete by ID  |  Esc: cancel  |  q: quit'
             ),
